@@ -1,4 +1,4 @@
-Void TEncCu::xCompressCU_NonRecursive_64x64To8x8(TComDataCU* pCtu)
+Void TEncCu::ISPL_xCompressCU_NonRecursive_64x64To8x8(TComDataCU* pCtu)
 {
     // initialize CU data
     m_ppcBestCU[0]->initCtu(pCtu->getPic(), pCtu->getCtuRsAddr());
@@ -14,40 +14,42 @@ Void TEncCu::xCompressCU_NonRecursive_64x64To8x8(TComDataCU* pCtu)
         ISPL_xCompressCU_NonRecursive(m_ppcBestCU[0], m_ppcTempCU[0], 0 DEBUG_STRING_PASS_INTO(sDebug));
 
     // [LTS] 32x32 들어가기
+    ISPL_InitEncode_NonRecursive(m_ppcBestCU[0], m_ppcTempCU[0], 0);
     for (UInt uiDepOnePartIdx = 0; uiDepOnePartIdx < 4; uiDepOnePartIdx++)
     {
         ISPL_InitSubCU_NonRecursive(m_ppcTempCU[0], m_ppcBestCU[1], m_ppcTempCU[1], uiDepOnePartIdx, 0, ip_iQP); // [LTS] 다음 뎁스 정보 넘기기
         //32x32 다음 뎁스에 대한 정보 만들기 그리고 밑에 뎁스 1에 그 정보를 보내줘야한다. <-여기에 QP에대한 정보도 같이 보내줘야함
         ISPL_xCompressCU_NonRecursive(m_ppcBestCU[1], m_ppcTempCU[1], 1 DEBUG_STRING_PASS_INTO(sDebug));
         // 16x16 들어가기
+        ISPL_InitEncode_NonRecursive(m_ppcBestCU[1], m_ppcTempCU[1], 1);
         for (UInt uiDepTwoPartIdx = 0; uiDepTwoPartIdx < 4; uiDepTwoPartIdx++)
         {
             ISPL_InitSubCU_NonRecursive(m_ppcTempCU[1], m_ppcBestCU[2], m_ppcTempCU[2], uiDepTwoPartIdx, 1, ip_iQP);
             ISPL_xCompressCU_NonRecursive(m_ppcBestCU[2], m_ppcTempCU[2], 2 DEBUG_STRING_PASS_INTO(sDebug));
             // 8x8 들어가기
+            ISPL_InitEncode_NonRecursive(m_ppcBestCU[2], m_ppcTempCU[2], 2);
             for (UInt uiDepThrPartIdx = 0; uiDepThrPartIdx < 4; uiDepThrPartIdx++)
             {
                 ISPL_InitSubCU_NonRecursive(m_ppcTempCU[2], m_ppcBestCU[3], m_ppcTempCU[3], uiDepThrPartIdx, 2, ip_iQP);
-                ISPL_xCompressCU_NonRecursive(m_ppcBestCU[3], m_ppcTempCU[3], 3 DEBUG_STRING_PASS_INTO(sDebug));
-                ISPL_StoreUpperCU_NonRecursive(m_ppcTempCU[2], m_ppcBestCU[3], uiDepThrPartIdx, 2)
-                    // 8x8에 각 사분면에 대한 Cost 제외나머지 정보 저장
+                ISPL_xCompressCU_NonRecursive(m_ppcBestCU[3], m_ppcTempCU[3], 3 DEBUG_STRING_PASS_INTO(sDebug)); // Non-Recursive xCompressCU
+                ISPL_StoreBestCU_NonRecursive(m_ppcBestCU[3], 3); // 현 뎁스 BestCU 저장
+                ISPL_StoreUpperCU_NonRecursive(m_ppcTempCU[2], m_ppcBestCU[3], uiDepThrPartIdx, 3); // 상위뎁스 Cost값 제외 저장
             }
-            // 8x8 4사분면 Cost 합치기.
-            // 8x8 4사분면합들과 바로 상위뎁스인 16x16 비교
+            ISPL_UpdateCU_NonRecursive(m_ppcBestCU[2], m_ppcTempCU[2], 2); // 상위 뎁스 cost값 저장 및 xCheckBestMode
+            ISPL_StoreBestCU_NonRecursive(m_ppcBestCU[2], 2); // 현 뎁스 BestCU 저장
+            ISPL_StoreUpperCU_NonRecursive(m_ppcTempCU[1], m_ppcBestCU[2], uiDepTwoPartIdx, 2); // 상위뎁스 Cost값 제외 저장
         }
-        // 16x16 4사분면 Cost 합치기.
-        //16x16 4사분면 합들과 바로 상위뎁스인 32x32 비교
+        ISPL_UpdateCU_NonRecursive(m_ppcBestCU[1], m_ppcTempCU[1], 1);
+        ISPL_StoreBestCU_NonRecursive(m_ppcBestCU[1], 1); // 현 뎁스 BestCU 저장
+        ISPL_StoreUpperCU_NonRecursive(m_ppcTempCU[0], m_ppcBestCU[1], uiDepOnePartIdx, 1); // 상위뎁스 Cost값 제외 저장
     }
-    // 32x32 4사분면 Cost 합치기.
-    //32x32 4사분면 합들과 64x64 비교
-
+    ISPL_UpdateCU_NonRecursive(m_ppcBestCU[0], m_ppcTempCU[0], 0);
+    ISPL_StoreBestCU_NonRecursive(m_ppcBestCU[0], 0); // 현 뎁스 BestCU 저장
 }
 
 // 보류 쓸일 없을것 같음
 Void TEncCu::ISPL_InitFlag_NonRecursive()
 {
-
-
     // ECU Parameters
     pCU_Split_Flag_64 = &CU_Split_Flag_64;
     pCU_Split_Flag_32 = &CU_Split_Flag_32;
@@ -94,7 +96,6 @@ Void TEncCu::ISPL_xCompressCU_NonRecursive(TComDataCU*& rpcBestCU, TComDataCU*& 
 
     const UInt numberValidComponents = rpcBestCU->getPic()->getNumberValidComponents();
 
-
     if (uiDepth <= pps.getMaxCuDQPDepth()) // [LTS] CTU일 때
     {
         Int idQP = m_pcEncCfg->getMaxDeltaQP();
@@ -140,10 +141,10 @@ Void TEncCu::ISPL_xCompressCU_NonRecursive(TComDataCU*& rpcBestCU, TComDataCU*& 
 
     TComSlice* pcSlice = rpcTempCU->getPic()->getSlice(rpcTempCU->getPic()->getCurrSliceIdx());
 
-    const Bool bBoundary = !(uiRPelX < sps.getPicWidthInLumaSamples() && uiBPelY < sps.getPicHeightInLumaSamples());
+    *ibp_Boundary = !(uiRPelX < sps.getPicWidthInLumaSamples() && uiBPelY < sps.getPicHeightInLumaSamples());
 
     // [LTS] 바운더리가 아닐시 본격적인 xCompressCU Intre, Inter, Skip/Merge 시작
-    if (!bBoundary)
+    if (!ibp_Boundary)
     {
         for (Int iQP = iMinQP; iQP <= iMaxQP; iQP++)
         {
@@ -215,7 +216,6 @@ Void TEncCu::ISPL_xCompressCU_NonRecursive(TComDataCU*& rpcBestCU, TComDataCU*& 
                 {
                     iQP = lowestQP;
                 }
-
                 rpcTempCU->initEstData(uiDepth, iQP, bIsLosslessMode);
 
                 // do inter modes, NxN, 2NxN, and Nx2N
@@ -425,113 +425,231 @@ Void TEncCu::ISPL_xCompressCU_NonRecursive(TComDataCU*& rpcBestCU, TComDataCU*& 
             rpcBestCU->getTotalCost() = m_pcRdCost->calcRdCost(rpcBestCU->getTotalBits(), rpcBestCU->getTotalDistortion());
             m_pcRDGoOnSbacCoder->store(m_pppcRDSbacCoder[uiDepth][CI_NEXT_BEST]);
         }
+        // copy original YUV samples to PCM buffer
+        if (rpcBestCU->getTotalCost() != MAX_DOUBLE && rpcBestCU->isLosslessCoded(0) && (rpcBestCU->getIPCMFlag(0) == false))
+        {
+            xFillPCMBuffer(rpcBestCU, m_ppcOrigYuv[uiDepth]);
         }
 
-    // copy original YUV samples to PCM buffer
-    if (rpcBestCU->getTotalCost() != MAX_DOUBLE && rpcBestCU->isLosslessCoded(0) && (rpcBestCU->getIPCMFlag(0) == false))
-    {
-        xFillPCMBuffer(rpcBestCU, m_ppcOrigYuv[uiDepth]);
-    }
-
-    if (uiDepth == pps.getMaxCuDQPDepth())
-    {
-        Int idQP = m_pcEncCfg->getMaxDeltaQP();
-        iMinQP = Clip3(-sps.getQpBDOffset(CHANNEL_TYPE_LUMA), MAX_QP, iBaseQP - idQP);
-        iMaxQP = Clip3(-sps.getQpBDOffset(CHANNEL_TYPE_LUMA), MAX_QP, iBaseQP + idQP);
-    }
-    else if (uiDepth < pps.getMaxCuDQPDepth())
-    {
-        iMinQP = iBaseQP;
-        iMaxQP = iBaseQP;
-    }
-    else
-    {
-        const Int iStartQP = rpcTempCU->getQP(0);
-        iMinQP = iStartQP;
-        iMaxQP = iStartQP;
-    }
-
-    if (m_pcEncCfg->getLumaLevelToDeltaQPMapping().isEnabled())
-    {
-        iMinQP = Clip3(-sps.getQpBDOffset(CHANNEL_TYPE_LUMA), MAX_QP, iBaseQP - m_lumaQPOffset);
-        iMaxQP = iMinQP;
-    }
-
-    if (m_pcEncCfg->getUseRateCtrl())
-    {
-        iMinQP = m_pcRateCtrl->getRCQP();
-        iMaxQP = m_pcRateCtrl->getRCQP();
-    }
-
-    if (m_pcEncCfg->getCUTransquantBypassFlagForceValue())
-    {
-        iMaxQP = iMinQP; // If all TUs are forced into using transquant bypass, do not loop here.
-    }
-
-    ip_iQP = &iMinQP; // [LTS] 야매 QP선언
-
-    // [LTS] 하나의 뎁스가 끝낫을 시 나와야 함
-    DEBUG_STRING_APPEND(sDebug_, sDebug);
-
-    rpcBestCU->copyToPic(uiDepth);                                                     // Copy Best data to Picture for next partition prediction.
-    xCopyYuv2Pic(rpcBestCU->getPic(), rpcBestCU->getCtuRsAddr(), rpcBestCU->getZorderIdxInCtu(), uiDepth, uiDepth);   // Copy Yuv data to picture Yuv
-    if (bBoundary)
-    {
-        return;
-    }
-
-    // Assert if Best prediction mode is NONE
-    // Selected mode's RD-cost must be not MAX_DOUBLE.
-    assert(rpcBestCU->getPartitionSize(0) != NUMBER_OF_PART_SIZES);
-    assert(rpcBestCU->getPredictionMode(0) != NUMBER_OF_PREDICTION_MODES);
-    assert(rpcBestCU->getTotalCost() != MAX_DOUBLE);
-    // [LTS] 끝 하위뎁스로 내려감 없을시 다음 CTU로 이동.
-    }
-
-Void TEncCu::ISPL_StoreUpperCU_NonRecursive(TComDataCU * &rpcTempCu, TComDataCU * &pcSubBestPartCU, UInt uiPartUnitIdx, UInt uiDepth)
-{
-    UChar uhNextDepth = uiDepth + 1;
-    rpcTempCU->copyPartFrom(pcSubBestPartCU, uiPartUnitIdx, uhNextDepth);
-    xCopyYuv2Tmp(pcSubBestPartCU->getTotalNumPart() * uiPartUnitIdx, uhNextDepth);
-}
-
-
-Bool TEncCu::ISPL_InitSubCU_NonRecursive(TComDataCU * &rpcTempCu, TComDataCU * &pcSubBestPartCU,
-    TComDataCU * &pcSubTempPartCU,
-    UInt       uiPartUnitIdx,
-    UInt       uiDepth,
-    Int * &iQP)
-{
-    Bool bInSlice, bFlag;
-    UChar uhNextDepth = uiDepth + 1;
-    TComSlice* pcSlice = rpcTempCu->getPic()->getSlice(rpcTempCu->getPic()->getCurrSliceIdx());
-    const TComSPS& sps = *(rpcTempCu->getSlice()->getSPS());
-
-    pcSubBestPartCU->initSubCU(rpcTempCu, uiPartUnitIdx, uhNextDepth, *iQP);
-    pcSubTempPartCU->initSubCU(rpcTempCu, uiPartUnitIdx, uhNextDepth, *iQP);
-
-    bInSlice = pcSubBestPartCU->getSCUAddr() + pcSubBestPartCU->getTotalNumPart() > pcSlice->getSliceSegmentCurEndCtuTsAddr()
-        && pcSubBestPartCU->getSCUAddr() < pcSlice->getSliceSegmentCurEndCtuTsAddr();
-
-    if (bInSlice &&
-        (pcSubBestPartCU->getCUPelX() < sps.getPicWidthInLumaSamples()) && (pcSubBestPartCU->getCUPelY() < sps.getPicHeightInLumaSamples()))
-    {
-        if (0 == uiPartUnitIdx) //initialize RD with previous depth buffer 이전 뎁스 버퍼 사용 RD초기화
+        if (uiDepth == pps.getMaxCuDQPDepth())
         {
-            m_pppcRDSbacCoder[uhNextDepth][CI_CURR_BEST]->load(m_pppcRDSbacCoder[uiDepth][CI_CURR_BEST]);
+            Int idQP = m_pcEncCfg->getMaxDeltaQP();
+            iMinQP = Clip3(-sps.getQpBDOffset(CHANNEL_TYPE_LUMA), MAX_QP, iBaseQP - idQP);
+            iMaxQP = Clip3(-sps.getQpBDOffset(CHANNEL_TYPE_LUMA), MAX_QP, iBaseQP + idQP);
+        }
+        else if (uiDepth < pps.getMaxCuDQPDepth())
+        {
+            iMinQP = iBaseQP;
+            iMaxQP = iBaseQP;
         }
         else
         {
-            m_pppcRDSbacCoder[uhNextDepth][CI_CURR_BEST]->load(m_pppcRDSbacCoder[uhNextDepth][CI_NEXT_BEST]);
+            const Int iStartQP = rpcTempCU->getQP(0);
+            iMinQP = iStartQP;
+            iMaxQP = iStartQP;
         }
-        bFlag = true;
-    }
-    else if (bInSlice)
+
+        if (m_pcEncCfg->getLumaLevelToDeltaQPMapping().isEnabled())
+        {
+            iMinQP = Clip3(-sps.getQpBDOffset(CHANNEL_TYPE_LUMA), MAX_QP, iBaseQP - m_lumaQPOffset);
+            iMaxQP = iMinQP;
+        }
+
+        if (m_pcEncCfg->getUseRateCtrl())
+        {
+            iMinQP = m_pcRateCtrl->getRCQP();
+            iMaxQP = m_pcRateCtrl->getRCQP();
+        }
+
+        if (m_pcEncCfg->getCUTransquantBypassFlagForceValue())
+        {
+            iMaxQP = iMinQP; // If all TUs are forced into using transquant bypass, do not loop here.
+        }
+
+        // [LTS] 하나의 뎁스가 끝낫을 시 나와야 함
+        DEBUG_STRING_APPEND(sDebug_, sDebug);
+        if (ibp_Boundary)
+        {
+            return;
+        }
+
+        // Assert if Best prediction mode is NONE
+        // Selected mode's RD-cost must be not MAX_DOUBLE.
+
+        // [LTS] 끝 하위뎁스로 내려감 없을시 다음 CTU로 이동.
+        }
+
+    Void TEncCu::ISPL_UpdateCU_NonRecursive(TComDataCU * &rpcTempCU, TComDataCU * &rpcBestCU, UInt uiDepth)
     {
-        pcSubBestPartCU->copyToPic(uhNextDepth);
-        rpcTempCu->copyPartFrom(pcSubBestPartCU, uiPartUnitIdx, uhNextDepth);
-        bFlag = false;
+        TComPic* pcPic = rpcBestCU->getPic();
+        TComSlice* pcSlice = rpcTempCU->getPic()->getSlice(rpcTempCU->getPic()->getCurrSliceIdx());
+        const UInt numberValidComponents = rpcBestCU->getPic()->getNumberValidComponents();
+        UChar uhNextDepth = uiDepth + 1;
+
+
+        m_pcRDGoOnSbacCoder->load(m_pppcRDSbacCoder[uhNextDepth][CI_NEXT_BEST]); // [TS] 16
+        if (!ibp_Boundary)
+        {
+            m_pcEntropyCoder->resetBits();
+            m_pcEntropyCoder->encodeSplitFlag(rpcTempCU, 0, uiDepth, true); // [TS] 16
+
+            rpcTempCU->getTotalBits() += m_pcEntropyCoder->getNumberOfWrittenBits(); // split bits // [TS] 16
+            rpcTempCU->getTotalBins() += ((TEncBinCABAC*)((TEncSbac*)m_pcEntropyCoder->m_pcEntropyCoderIf)->getEncBinIf())->getBinsCoded();
+        }
+        rpcTempCU->getTotalCost() = m_pcRdCost->calcRdCost(rpcTempCU->getTotalBits(), rpcTempCU->getTotalDistortion());
+
+        if (uiDepth == rpcTempCU->getSlice()->getPPS()->getMaxCuDQPDepth() && rpcTempCU->getSlice()->getPPS()->getUseDQP())
+        {
+            Bool hasResidual = false;
+            for (UInt uiBlkIdx = 0; uiBlkIdx < rpcTempCU->getTotalNumPart(); uiBlkIdx++)
+            {
+                if ((rpcTempCU->getCbf(uiBlkIdx, COMPONENT_Y)
+                    || (rpcTempCU->getCbf(uiBlkIdx, COMPONENT_Cb) && (numberValidComponents > COMPONENT_Cb))
+                    || (rpcTempCU->getCbf(uiBlkIdx, COMPONENT_Cr) && (numberValidComponents > COMPONENT_Cr))))
+                {
+                    hasResidual = true;
+                    break;
+                }
+            }
+
+            if (hasResidual)
+            {
+                m_pcEntropyCoder->resetBits();
+                m_pcEntropyCoder->encodeQP(rpcTempCU, 0, false);
+                rpcTempCU->getTotalBits() += m_pcEntropyCoder->getNumberOfWrittenBits(); // dQP bits
+                rpcTempCU->getTotalBins() += ((TEncBinCABAC*)((TEncSbac*)m_pcEntropyCoder->m_pcEntropyCoderIf)->getEncBinIf())->getBinsCoded();
+                rpcTempCU->getTotalCost() = m_pcRdCost->calcRdCost(rpcTempCU->getTotalBits(), rpcTempCU->getTotalDistortion());
+
+                Bool foundNonZeroCbf = false;
+                rpcTempCU->setQPSubCUs(rpcTempCU->getRefQP(0), 0, uiDepth, foundNonZeroCbf);
+                assert(foundNonZeroCbf);
+            }
+            else
+            {
+                rpcTempCU->setQPSubParts(rpcTempCU->getRefQP(0), 0, uiDepth); // set QP to default QP
+            }
+        }
+        // [TS] 16
+        m_pcRDGoOnSbacCoder->store(m_pppcRDSbacCoder[uiDepth][CI_TEMP_BEST]);
+
+        // If the configuration being tested exceeds the maximum number of bytes for a slice / slice-segment, then
+        // a proper RD evaluation cannot be performed. Therefore, termination of the
+        // slice/slice-segment must be made prior to this CTU.
+        // This can be achieved by forcing the decision to be that of the rpcTempCU.
+        // The exception is each slice / slice-segment must have at least one CTU.
+        if (rpcBestCU->getTotalCost() != MAX_DOUBLE)
+        { // [TS] 16
+            const Bool isEndOfSlice = pcSlice->getSliceMode() == FIXED_NUMBER_OF_BYTES
+                && ((pcSlice->getSliceBits() + rpcBestCU->getTotalBits()) > pcSlice->getSliceArgument() << 3)
+                && rpcBestCU->getCtuRsAddr() != pcPic->getPicSym()->getCtuTsToRsAddrMap(pcSlice->getSliceCurStartCtuTsAddr())
+                && rpcBestCU->getCtuRsAddr() != pcPic->getPicSym()->getCtuTsToRsAddrMap(pcSlice->getSliceSegmentCurStartCtuTsAddr());
+            const Bool isEndOfSliceSegment = pcSlice->getSliceSegmentMode() == FIXED_NUMBER_OF_BYTES
+                && ((pcSlice->getSliceSegmentBits() + rpcBestCU->getTotalBits()) > pcSlice->getSliceSegmentArgument() << 3)
+                && rpcBestCU->getCtuRsAddr() != pcPic->getPicSym()->getCtuTsToRsAddrMap(pcSlice->getSliceSegmentCurStartCtuTsAddr());
+            // Do not need to check slice condition for slice-segment since a slice-segment is a subset of a slice. 
+            if (isEndOfSlice || isEndOfSliceSegment)
+            {
+                rpcBestCU->getTotalCost() = MAX_DOUBLE;
+            }
+        }
+        xCheckBestMode(rpcBestCU, rpcTempCU, uiDepth DEBUG_STRING_PASS_INTO(sDebug) DEBUG_STRING_PASS_INTO(sTempDebug) DEBUG_STRING_PASS_INTO(false));
     }
 
-    return bFlag;
-}
+    Void TEncCu::ISPL_StoreUpperCU_NonRecursive(TComDataCU * &rpcTempCU, TComDataCU * &pcSubBestPartCU, UInt uiPartUnitIdx, UChar uhNextDepth)
+    {
+        rpcTempCU->copyPartFrom(pcSubBestPartCU, uiPartUnitIdx, uhNextDepth);
+        xCopyYuv2Tmp(pcSubBestPartCU->getTotalNumPart() * uiPartUnitIdx, uhNextDepth);
+    }
+
+    Void TEncCu::ISPL_StoreBestCU_NonRecursive(TComDataCU * &rpcBestCU, UInt uiDepth)
+    {
+        rpcBestCU->copyToPic(uiDepth);
+        xCopyYuv2Pic(rpcBestCU->getPic(), rpcBestCU->getCtuRsAddr(), rpcBestCU->getZorderIdxInCtu(), uiDepth, uiDepth);
+
+        assert(rpcBestCU->getPartitionSize(0) != NUMBER_OF_PART_SIZES);
+        assert(rpcBestCU->getPredictionMode(0) != NUMBER_OF_PREDICTION_MODES);
+        assert(rpcBestCU->getTotalCost() != MAX_DOUBLE);
+    }
+
+
+    Void TEncCu::ISPL_InitSubCU_NonRecursive(TComDataCU * &rpcTempCU, TComDataCU * &pcSubBestPartCU,
+        TComDataCU * &pcSubTempPartCU,
+        UInt       uiPartUnitIdx,
+        UInt       uiDepth,
+        Int iQP)
+    {
+        Bool bInSlice, bFlag;
+        UChar uhNextDepth = uiDepth + 1;
+        TComSlice* pcSlice = rpcTempCU->getPic()->getSlice(rpcTempCU->getPic()->getCurrSliceIdx());
+        const TComSPS& sps = *(rpcTempCU->getSlice()->getSPS());
+
+        pcSubBestPartCU->initSubCU(rpcTempCU, uiPartUnitIdx, uhNextDepth, iQP);
+        pcSubTempPartCU->initSubCU(rpcTempCU, uiPartUnitIdx, uhNextDepth, iQP);
+
+        bInSlice = pcSubBestPartCU->getSCUAddr() + pcSubBestPartCU->getTotalNumPart() > pcSlice->getSliceSegmentCurEndCtuTsAddr()
+            && pcSubBestPartCU->getSCUAddr() < pcSlice->getSliceSegmentCurEndCtuTsAddr();
+
+        if (bInSlice &&
+            (pcSubBestPartCU->getCUPelX() < sps.getPicWidthInLumaSamples()) && (pcSubBestPartCU->getCUPelY() < sps.getPicHeightInLumaSamples()))
+        {
+            if (0 == uiPartUnitIdx) //initialize RD with previous depth buffer 이전 뎁스 버퍼 사용 RD초기화
+            {
+                m_pppcRDSbacCoder[uhNextDepth][CI_CURR_BEST]->load(m_pppcRDSbacCoder[uiDepth][CI_CURR_BEST]);
+            }
+            else
+            {
+                m_pppcRDSbacCoder[uhNextDepth][CI_CURR_BEST]->load(m_pppcRDSbacCoder[uhNextDepth][CI_NEXT_BEST]);
+            }
+            bFlag = true;
+        }
+        else if (bInSlice)
+        {
+            pcSubBestPartCU->copyToPic(uhNextDepth);
+            rpcTempCU->copyPartFrom(pcSubBestPartCU, uiPartUnitIdx, uhNextDepth);
+            bFlag = false;
+        }
+    }
+
+    Int TEncCu::ISPL_ComputeQP_NonRecursive(TComDataCU * &rpcBestCU, TComDataCU * &rpcTempCU, UInt uiDepth)
+    {
+        Int iBaseQP = xComputeQP(rpcBestCU, uiDepth);
+        Int iMinQP;
+        Int iMaxQP;
+
+        if (uiDepth <= rpcTempCU->getSlice()->getPPS()->getMaxCuDQPDepth()) // [LTS] CTU일 때
+        {
+            Int idQP = m_pcEncCfg->getMaxDeltaQP();
+            iMinQP = Clip3(-rpcTempCU->getSlice()->getSPS()->getQpBDOffset(CHANNEL_TYPE_LUMA), MAX_QP, iBaseQP - idQP);
+            iMaxQP = Clip3(-rpcTempCU->getSlice()->getSPS()->getQpBDOffset(CHANNEL_TYPE_LUMA), MAX_QP, iBaseQP + idQP);
+        }
+        else //[LTS] CU일 때
+        {
+            iMinQP = rpcTempCU->getQP(0);
+            iMaxQP = rpcTempCU->getQP(0);
+        }
+
+        if (m_pcEncCfg->getLumaLevelToDeltaQPMapping().isEnabled())
+        {
+            if (uiDepth <= rpcTempCU->getSlice()->getPPS()->getMaxCuDQPDepth())
+            {
+                // keep using the same m_QP_LUMA_OFFSET in the same CTU
+                m_lumaQPOffset = calculateLumaDQP(rpcTempCU, 0, m_ppcOrigYuv[uiDepth]);
+            }
+            iMinQP = Clip3(-rpcTempCU->getSlice()->getSPS()->getQpBDOffset(CHANNEL_TYPE_LUMA), MAX_QP, iBaseQP - m_lumaQPOffset);
+            iMaxQP = iMinQP; // force encode choose the modified QO
+        }
+
+        if (m_pcEncCfg->getUseRateCtrl())
+        {
+            iMinQP = m_pcRateCtrl->getRCQP();
+            iMaxQP = m_pcRateCtrl->getRCQP();
+        }
+
+        return iMinQP;
+    }
+
+    Void TEncCu::ISPL_InitEncode_NonRecursive(TComDataCU * &rpcBestCU, TComDataCU * &rpcTempCU, UInt uiDepth)
+    {
+        ip_iQP = ISPL_ComputeQP_NonRecursive(rpcBestCU, rpcTempCU, uiDepth);
+        rpcTempCU->initEstData(uiDepth, ip_iQP, 0);
+    }
